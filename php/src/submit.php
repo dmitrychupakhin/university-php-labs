@@ -1,8 +1,10 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/db.php'; // подключение к БД
 
 use Respect\Validation\Validator as v;
 
+// Очистка данных от XSS
 function sanitize($data) {
     return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
 }
@@ -13,8 +15,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $issue = sanitize($_POST['issue'] ?? '');
     $address = sanitize($_POST['address'] ?? '');
     $contact_time = sanitize($_POST['contact_time'] ?? '');
+    $submitted_at = date('Y-m-d H:i:s');
 
-    // Валидация с помощью Respect\Validation
+    // Валидация
     $errors = [];
 
     if (!v::stringType()->length(2, 50)->validate($name)) {
@@ -42,14 +45,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit;
     }
 
-    // Если всё прошло успешно
-    $row = [$name, $phone, $issue, $address, $contact_time, date('Y-m-d H:i:s')];
-    $file = fopen("feedback.csv", "a");
-    fputcsv($file, $row);
-    fclose($file);
+    // Сохраняем в базу данных
+    try {
+        $pdo = getPDO(); // из db.php
+        $stmt = $pdo->prepare("
+            INSERT INTO feedback (name, phone, issue, address, contact_time, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$name, $phone, $issue, $address, $contact_time, $submitted_at]);
 
-    echo "<p>Спасибо, ваша заявка принята!</p>";
-    echo "<a href='index.php'>Отправить ещё одну</a>";
+        echo "<p>Спасибо, ваша заявка принята и сохранена в базе данных!</p>";
+        echo "<a href='index.php'>Отправить ещё одну</a>";
+
+    } catch (PDOException $e) {
+        echo "❌ Ошибка при сохранении в БД: " . $e->getMessage();
+    }
 } else {
     echo "Ошибка: форма не была отправлена методом POST.";
 }
